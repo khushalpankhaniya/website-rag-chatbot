@@ -34,8 +34,8 @@ export const chatModel = new ChatGoogleGenerativeAI({
 export async function queryRAG(question) {
   const vectorStore = await getVectorStore();
 
-  // 1. Retrieve the top 5 relevant documents from Chroma
-  const retrievedDocs = await vectorStore.similaritySearch(question, 5);
+  // 1. Retrieve the top 15 relevant documents from Chroma
+  const retrievedDocs = await vectorStore.similaritySearch(question, 15);
 
   // 2. Format context for prompt template (Title, URL, and Content)
   const contextText = retrievedDocs
