@@ -3,14 +3,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const apiKey = process.env.GOOGLE_API_KEY;
 
 if (!apiKey) {
-  throw new Error("Missing GEMINI_API_KEY or GOOGLE_API_KEY environment variables.");
+  throw new Error("Missing GOOGLE_API_KEY environment variable.");
 }
 
 // Initialize the Google Generative AI Embeddings model 'embedding-001' (768 dimensions)
 export const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "embedding-001",
+  model: "gemini-embedding-001",
   apiKey: apiKey,
 });

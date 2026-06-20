@@ -5,10 +5,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const apiKey = process.env.GOOGLE_API_KEY;
 
 if (!apiKey) {
-  throw new Error("Missing GEMINI_API_KEY or GOOGLE_API_KEY environment variables.");
+  throw new Error("Missing GOOGLE_API_KEY environment variable.");
 }
 
 // Initialize the ChatGoogleGenerativeAI model gemini-2.5-flash
@@ -33,28 +33,28 @@ export const chatModel = new ChatGoogleGenerativeAI({
  */
 export async function queryRAG(question) {
   const vectorStore = await getVectorStore();
-  
+
   // 1. Retrieve the top 5 relevant documents from Chroma
   const retrievedDocs = await vectorStore.similaritySearch(question, 5);
-  
+
   // 2. Format context for prompt template (Title, URL, and Content)
   const contextText = retrievedDocs
     .map(doc => `Title: ${doc.metadata?.title || 'Untitled'}\nSource URL: ${doc.metadata?.source || 'No URL'}\nContent: ${doc.pageContent}`)
     .join('\n\n');
-  
+
   // 3. Format prompt with context and question
   const formattedPrompt = await ragPrompt.format({
     context: contextText,
     question: question,
   });
-  
+
   // 4. Generate answer from Gemini
   const response = await chatModel.invoke(formattedPrompt);
-  
+
   // 5. Extract unique sources used for retrieval
   const sources = [];
   const seenUrls = new Set();
-  
+
   for (const doc of retrievedDocs) {
     const url = doc.metadata?.source;
     if (url && !seenUrls.has(url)) {
@@ -65,7 +65,7 @@ export async function queryRAG(question) {
       });
     }
   }
-  
+
   return {
     answer: response.content,
     sources,

@@ -15,8 +15,8 @@ export async function chatQuery(req, res) {
     const { question } = req.body;
 
     if (!question || typeof question !== "string" || question.trim() === "") {
-      return res.status(400).json({ 
-        error: "Missing or invalid 'question' in request body. It must be a non-empty string." 
+      return res.status(400).json({
+        error: "Missing or invalid 'question' in request body. It must be a non-empty string."
       });
     }
 
@@ -28,9 +28,9 @@ export async function chatQuery(req, res) {
     res.json(result);
   } catch (error) {
     console.error("Error in chatQuery controller:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error during answer generation.",
-      details: error.message 
+      details: error.message
     });
   }
 }
