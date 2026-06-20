@@ -134,11 +134,21 @@ function App() {
       }
     ]);
 
+    const historyPayload = messages
+      .filter(msg => msg.id !== 'welcome' && !msg.id.startsWith('system'))
+      .map(msg => ({
+        sender: msg.sender,
+        text: msg.text
+      }));
+
     setChatInput('');
     setIsThinking(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/chat`, { question: userText });
+      const response = await axios.post(`${API_BASE_URL}/api/chat`, { 
+        question: userText,
+        history: historyPayload 
+      });
       
       setMessages((prev) => [
         ...prev,
