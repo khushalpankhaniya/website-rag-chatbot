@@ -16,7 +16,10 @@ export class CrawlerService {
    * @returns {Promise<{totalPages: number, pages: Array}>} Crawled pages.
    */
   static async crawl(startUrl) {
-    const normalizedStart = normalizeUrl(startUrl);
+    let normalizedStart = normalizeUrl(startUrl);
+    if (!normalizedStart) {
+      normalizedStart = normalizeUrl('https://' + startUrl);
+    }
     if (!normalizedStart) {
       throw new Error('Invalid starting URL');
     }
@@ -43,10 +46,12 @@ export class CrawlerService {
         timeout: 5000
       });
 
-      if (robotsResponse.status === 200 && typeof robotsResponse.data === 'string') {
+      if (robotsResponse.status === 200 && typeof robotsResponse.data === 'string' && !robotsResponse.data.trim().startsWith('<')) {
         // 2. Parse the robots.txt rules assuming User-agent: *
         robotsObj = robotsParser(robotsUrl, robotsResponse.data);
         console.log(`[Crawler] Successfully parsed robots.txt rules.`);
+      } else if (robotsResponse.data && robotsResponse.data.trim().startsWith('<')) {
+        console.log(`[Crawler] robots.txt response returned HTML content. Assuming all pages are allowed.`);
       }
     } catch (err) {
       // 5. If robots.txt does not exist or returns an error -> assume all pages are allowed and continue crawling normally. Do not crash.
