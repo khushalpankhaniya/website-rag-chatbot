@@ -11,9 +11,9 @@ if (!apiKey) {
   throw new Error("Missing GOOGLE_API_KEY environment variable.");
 }
 
-// Initialize the ChatGoogleGenerativeAI model gemini-2.5-flash
+// Initialize the ChatGoogleGenerativeAI model gemini-flash-latest
 export const chatModel = new ChatGoogleGenerativeAI({
-  model: "gemini-2.5-flash",
+  model: "gemini-flash-latest",
   apiKey: apiKey,
   temperature: 0, // Keep temperature 0 for factual grounding
 });

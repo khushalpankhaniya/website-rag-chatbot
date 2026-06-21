@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { URL } from 'url';
+import robotsParser from 'robots-parser';
 import { normalizeUrl } from '../utils/normalizeUrl.js';
 import { cleanContent } from '../utils/cleanContent.js';
 import { extractLinks } from '../utils/extractLinks.js';
@@ -25,6 +26,31 @@ export class CrawlerService {
       startDomain = new URL(normalizedStart).hostname;
     } catch (err) {
       throw new Error('Failed to parse domain from URL');
+    }
+
+    // 1. Fetch the robots.txt file from the root of the given domain
+    // Example: if URL is https://posimyth.com/about, fetch https://posimyth.com/robots.txt
+    let robotsObj = null;
+    try {
+      const startUrlObj = new URL(normalizedStart);
+      const robotsUrl = `${startUrlObj.protocol}//${startUrlObj.host}/robots.txt`;
+      console.log(`[Crawler] Fetching robots.txt from: ${robotsUrl}`);
+      
+      const robotsResponse = await axios.get(robotsUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        },
+        timeout: 5000
+      });
+
+      if (robotsResponse.status === 200 && typeof robotsResponse.data === 'string') {
+        // 2. Parse the robots.txt rules assuming User-agent: *
+        robotsObj = robotsParser(robotsUrl, robotsResponse.data);
+        console.log(`[Crawler] Successfully parsed robots.txt rules.`);
+      }
+    } catch (err) {
+      // 5. If robots.txt does not exist or returns an error -> assume all pages are allowed and continue crawling normally. Do not crash.
+      console.log(`[Crawler] robots.txt not found or could not be parsed: ${err.message}. Assuming all pages are allowed.`);
     }
 
     const maxPages = 20;
@@ -58,6 +84,14 @@ export class CrawlerService {
         continue;
       }
 
+      // 3. Before visiting ANY page in the crawler queue, check if that URL is allowed by robots.txt
+      // - If the URL matches a Disallow rule -> skip it, do not crawl
+      // - If the URL is allowed (or robots.txt is missing) -> crawl it normally
+      if (robotsObj && !robotsObj.isAllowed(current.url, '*')) {
+        console.log(`[Crawler] Skipping disallowed URL by robots.txt: ${current.url}`);
+        continue;
+      }
+
       // Mark as visited
       visited.add(current.url);
 
@@ -71,8 +105,15 @@ export class CrawlerService {
 
         const response = await axios.get(current.url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Crawler/1.0',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'max-age=0',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Chua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+            'Sec-Chua-Mobile': '?0',
+            'Sec-Chua-Platform': '"Windows"',
           },
           timeout: 8000 // 8 seconds timeout
         });
