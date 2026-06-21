@@ -17,7 +17,7 @@ function App() {
     {
       id: 'welcome',
       sender: 'bot',
-      text: "Hello! I am your **Website RAG Assistant** 🤖.\n\nEnter a website URL in the control panel on the left to crawl and index it into **ChromaDB**. Once indexing completes, you can chat with me about the website's content, services, values, or any other details!",
+      text: "Hello! I am your **WebChat AI Assistant** 🤖.\n\nEnter a website URL in the control panel on the left to crawl and index it into **ChromaDB**. Once indexing completes, you can chat with me about the website's content, services, values, or any other details!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       sources: []
     }
@@ -25,8 +25,11 @@ function App() {
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [expandedPages, setExpandedPages] = useState({});
+  const [logs, setLogs] = useState([]);
+  const [chunksCount, setChunksCount] = useState(0);
 
   const chatEndRef = useRef(null);
+  const logsContainerRef = useRef(null);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,6 +38,17 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isThinking]);
+
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLogs((prev) => [...prev, { id: Date.now() + Math.random(), message, timestamp }]);
+  };
 
   const isUrl = (str) => {
     const pattern = new RegExp(
@@ -55,7 +69,7 @@ function App() {
 
     if (!isUrl(urlInput)) {
       setCrawlStatus('error');
-      setErrorMessage('Please enter a valid website link or domain name (e.g. stackdot.in or https://react.dev).');
+      setErrorMessage('Please enter a valid website link or domain name (e.g. https://example.com).');
       return;
     }
 
@@ -67,11 +81,34 @@ function App() {
     setCrawlStatus('crawling');
     setErrorMessage('');
     setCrawledPages([]);
+    setLogs([]);
+    setChunksCount(0);
+
+    addLog(`Checking robots.txt for ${targetUrl}...`);
 
     try {
-      // 1. Crawl Endpoint
-      console.log(`Starting crawl on target: ${targetUrl}`);
+      addLog(`Connecting to crawler backend...`);
+      // Start simulated logs to provide rich progression feedback
+      const simulatedLogs = [
+        "Analyzing domain map structure...",
+        "Evaluating robots.txt paths and rules...",
+        "Setting up BFS queue traversal...",
+        "Scraping same-domain pages with rate limiting...",
+        "Extracting page elements and body contents..."
+      ];
+      
+      let simIndex = 0;
+      const intervalId = setInterval(() => {
+        if (simIndex < simulatedLogs.length) {
+          addLog(simulatedLogs[simIndex]);
+          simIndex++;
+        } else {
+          clearInterval(intervalId);
+        }
+      }, 1500);
+
       const crawlRes = await axios.post(`${API_BASE_URL}/api/crawl`, { url: targetUrl });
+      clearInterval(intervalId);
       
       if (!crawlRes.data.pages || !Array.isArray(crawlRes.data.pages) || crawlRes.data.pages.length === 0) {
         throw new Error('Crawl returned no readable pages. Make sure the website exists and allows scrapers.');
@@ -79,15 +116,22 @@ function App() {
       
       const pages = crawlRes.data.pages;
       setCrawledPages(pages);
+      addLog(`Scraped ${pages.length} same-domain pages successfully.`);
       
-      // 2. Index Endpoint
       setCrawlStatus('indexing');
-      console.log(`Indexing ${pages.length} pages to ChromaDB...`);
+      addLog(`Splitting content into 1000-character context chunks...`);
+      addLog(`Generating vector embeddings via Gemini API...`);
+      
       const indexRes = await axios.post(`${API_BASE_URL}/api/index`, { pages });
       
       if (!indexRes.data.success) {
         throw new Error(indexRes.data.error || 'Failed to generate embeddings or index pages inside ChromaDB.');
       }
+
+      setChunksCount(indexRes.data.chunksStored || 0);
+      addLog(`Generated embeddings for ${indexRes.data.chunksStored} text chunks.`);
+      addLog(`Saved all vectors to website-rag collection inside ChromaDB.`);
+      addLog(`System status is now READY.`);
 
       setCrawlStatus('ready');
       setIndexedUrl(targetUrl);
@@ -107,20 +151,19 @@ function App() {
     } catch (err) {
       console.error(err);
       setCrawlStatus('error');
-      setErrorMessage(
-        err.response?.data?.details || 
+      const errText = err.response?.data?.details || 
         err.response?.data?.error || 
         err.message || 
-        'An error occurred. Check if the server is running on port 5000 and target site is reachable.'
-      );
+        'An error occurred. Check if the server is running on port 5000 and target site is reachable.';
+      setErrorMessage(errText);
+      addLog(`❌ Error during execution: ${errText}`);
     }
   };
 
-  const handleSendChat = async (e) => {
-    e.preventDefault();
-    if (!chatInput.trim() || isThinking || crawlStatus !== 'ready') return;
+  const sendChatMessage = async (textToSend) => {
+    if (!textToSend.trim() || isThinking || crawlStatus !== 'ready') return;
 
-    const userText = chatInput.trim();
+    const userText = textToSend.trim();
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsgId = `user-${Date.now()}`;
 
@@ -167,7 +210,7 @@ function App() {
         {
           id: `bot-err-${Date.now()}`,
           sender: 'bot',
-          text: `❌ **Failed to retrieve answer.**\n\n${err.response?.data?.details || err.response?.data?.error || err.message || 'Please check if your backend and ChromaDB are active.'}`,
+          text: "Something went wrong. Please try again.",
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           sources: []
         }
@@ -177,6 +220,15 @@ function App() {
     }
   };
 
+  const handleSendChat = (e) => {
+    e.preventDefault();
+    sendChatMessage(chatInput);
+  };
+
+  const handleSendSuggested = (text) => {
+    sendChatMessage(text);
+  };
+
   const togglePageExpand = (url) => {
     setExpandedPages(prev => ({
       ...prev,
@@ -184,331 +236,384 @@ function App() {
     }));
   };
 
-  // Helper to format text with markdown bold and inline code blocks
+  // Helper to format text with markdown bold and inline code blocks, supporting bullet points
   const renderMessageText = (text) => {
     if (!text) return '';
-    return text.split('\n\n').map((paragraph, pIdx) => (
-      <p key={pIdx} className={pIdx > 0 ? 'mt-2' : ''}>
-        {paragraph.split('**').map((chunk, cIdx) => {
-          if (cIdx % 2 === 1) {
-            return <strong key={cIdx} className="text-slate-900 font-bold">{chunk}</strong>;
+    
+    return text.split('\n').map((line, lIdx) => {
+      const isBullet = line.trim().startsWith('- ') || line.trim().startsWith('* ');
+      const cleanLine = isBullet ? line.trim().replace(/^[-*]\s+/, '') : line;
+      
+      const content = cleanLine.split('**').map((chunk, cIdx) => {
+        if (cIdx % 2 === 1) {
+          return <strong key={cIdx} className="text-white font-bold">{chunk}</strong>;
+        }
+        return chunk.split('`').map((code, coIdx) => {
+          if (coIdx % 2 === 1) {
+            return (
+              <code key={coIdx} className="bg-[#0F0F0F] text-[#A78BFA] px-1.5 py-0.5 rounded font-mono text-xs border border-[#2D2D2D]">
+                {code}
+              </code>
+            );
           }
-          return chunk.split('`').map((code, coIdx) => {
-            if (coIdx % 2 === 1) {
-              return <code key={coIdx} className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded font-mono text-[10px] border border-slate-200/80">{code}</code>;
-            }
-            return code;
-          });
-        })}
-      </p>
-    ));
+          return code;
+        });
+      });
+
+      if (isBullet) {
+        return (
+          <li key={lIdx} className="list-disc ml-5 text-sm text-[#F9FAFB] leading-relaxed my-1">
+            {content}
+          </li>
+        );
+      }
+      return (
+        <p key={lIdx} className="text-sm text-[#F9FAFB] leading-relaxed my-1">
+          {content}
+        </p>
+      );
+    });
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center p-3 sm:p-6 selection:bg-blue-500/20 text-slate-800 relative overflow-x-hidden">
-      
-      {/* Title Header bar */}
-      <header className="w-full max-w-7xl flex items-center justify-between mb-6 pb-4 border-b border-slate-200/80 z-10 bg-transparent">
-        <div className="flex items-center space-x-3">
-          <div className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center shadow-md">
-            <svg className="w-5.5 h-5.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-slate-900 tracking-tight">RAG Web Crawler & Chatbot</h1>
-            <span className="text-[11px] text-slate-500 font-medium">ChromaDB Vector Store & Gemini LLM</span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-full shadow-sm">
-          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-widest">Active</span>
-        </div>
-      </header>
-
-      {/* Main Dashboard Container */}
-      <main className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 flex-grow h-[calc(100vh-140px)]">
+    <div className="min-h-screen bg-[#0F0F0F] text-[#F9FAFB] p-6 selection:bg-[#7C3AED]/30 font-sans flex flex-col justify-between">
+      <div className="w-full max-w-[1400px] mx-auto flex flex-col flex-grow">
         
-        {/* Left Column: Crawler Panel */}
-        <section className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-5 flex flex-col overflow-hidden shadow-sm h-full">
-          <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Control Panel</h2>
-          
-          {/* Crawl Submission Form */}
-          <form onSubmit={handleCrawlAndIndex} className="space-y-3.5">
+        {/* Header Section */}
+        <header className="w-full flex items-center justify-between mb-6 pb-4 border-b border-[#2D2D2D]">
+          <div className="flex items-center space-x-3">
+            <div className="h-10 w-10 rounded-xl bg-[#7C3AED] flex items-center justify-center shadow-lg shadow-[#7C3AED]/20">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+              </svg>
+            </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                Target Website URL
-              </label>
-              <div className="flex bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus-within:bg-white focus-within:border-blue-500/80 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-150">
-                <svg className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path>
-                </svg>
-                <input
-                  type="text"
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="e.g. stackdot.in"
-                  className="bg-transparent text-xs w-full text-slate-800 outline-none placeholder-slate-400 font-medium"
-                  disabled={crawlStatus === 'crawling' || crawlStatus === 'indexing'}
-                />
+              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                WebChat AI
+                <span className="h-2 w-2 rounded-full bg-[#10B981] animate-pulse" title="System Ready"></span>
+              </h1>
+              <span className="text-xs text-[#9CA3AF] font-medium">Chat with any website</span>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 bg-[#1A1A1A] border border-[#2D2D2D] px-4 py-2 rounded-lg">
+            <span className="text-xs font-semibold text-[#9CA3AF]">Backend Node:</span>
+            <span className="text-xs font-bold text-[#10B981]">Active</span>
+          </div>
+        </header>
+
+        {/* Dashboard Grid */}
+        <main className="w-full grid grid-cols-1 lg:grid-cols-10 gap-6 flex-grow h-[calc(100vh-140px)] min-h-[600px]">
+          
+          {/* Left Column (40%) - Control Panel */}
+          <section className="lg:col-span-4 flex flex-col space-y-6 overflow-y-auto pr-1">
+            
+            {/* Crawl Form */}
+            <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl p-5 shadow-lg space-y-4">
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Crawl Configuration</h2>
+              <form onSubmit={handleCrawlAndIndex} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#9CA3AF] mb-2">Target Website URL</label>
+                  <div className="flex items-center bg-[#0F0F0F] border border-[#2D2D2D] rounded-lg px-3 py-3 focus-within:border-[#7C3AED] focus-within:ring-1 focus-within:ring-[#7C3AED] transition-all">
+                    <svg className="w-5 h-5 text-[#9CA3AF]/60 mr-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder="e.g. https://example.com"
+                      disabled={crawlStatus === 'crawling' || crawlStatus === 'indexing'}
+                      className="bg-transparent text-sm w-full text-white outline-none placeholder-[#9CA3AF]/30 font-medium"
+                    />
+                  </div>
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={crawlStatus === 'crawling' || crawlStatus === 'indexing' || !urlInput.trim()}
+                  className="w-full bg-[#7C3AED] hover:bg-[#7C3AED]/90 disabled:opacity-40 disabled:hover:bg-[#7C3AED] text-white font-bold py-3.5 px-4 rounded-lg text-sm transition-all duration-200 shadow-md active:scale-[0.99] cursor-pointer"
+                >
+                  {crawlStatus === 'crawling' ? 'Crawling Pages...' : crawlStatus === 'indexing' ? 'Saving to Database...' : 'Start Crawling'}
+                </button>
+              </form>
+            </div>
+
+            {/* Status Information */}
+            <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl p-5 shadow-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#9CA3AF]">Status</span>
+                <div className="flex items-center space-x-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${
+                    crawlStatus === 'ready' ? 'bg-[#10B981]' :
+                    crawlStatus === 'crawling' || crawlStatus === 'indexing' ? 'bg-[#F59E0B] animate-pulse' :
+                    crawlStatus === 'error' ? 'bg-[#EF4444]' : 'bg-[#9CA3AF]'
+                  }`}></span>
+                  <span className={`text-xs font-bold uppercase tracking-wider ${
+                    crawlStatus === 'ready' ? 'text-[#10B981]' :
+                    crawlStatus === 'crawling' || crawlStatus === 'indexing' ? 'text-[#F59E0B]' :
+                    crawlStatus === 'error' ? 'text-[#EF4444]' : 'text-[#9CA3AF]'
+                  }`}>
+                    {crawlStatus === 'ready' ? 'Indexed' :
+                     crawlStatus === 'crawling' ? 'Crawling' :
+                     crawlStatus === 'indexing' ? 'Indexing' :
+                     crawlStatus === 'error' ? 'Error' : 'Idle'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 border-t border-[#2D2D2D] pt-4">
+                <div className="bg-[#0F0F0F] border border-[#2D2D2D] rounded-lg p-3 text-center">
+                  <span className="text-[10px] text-[#9CA3AF] uppercase font-bold tracking-wider">Pages Crawled</span>
+                  <p className="text-xl font-bold text-white mt-1">{crawledPages.length}</p>
+                </div>
+                <div className="bg-[#0F0F0F] border border-[#2D2D2D] rounded-lg p-3 text-center">
+                  <span className="text-[10px] text-[#9CA3AF] uppercase font-bold tracking-wider">Chunks Indexed</span>
+                  <p className="text-xl font-bold text-white mt-1">{chunksCount}</p>
+                </div>
+              </div>
+
+              {crawlStatus === 'error' && (
+                <div className="bg-[#EF4444]/10 border border-[#EF4444]/20 p-4 rounded-lg text-xs text-[#EF4444] leading-relaxed">
+                  <strong>Crawl Error:</strong> {errorMessage}
+                </div>
+              )}
+            </div>
+
+            {/* Simulated Progress Logs */}
+            <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl p-5 shadow-lg flex flex-col flex-grow overflow-hidden min-h-[200px] max-h-[300px]">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Progress Logs</h3>
+              <div 
+                ref={logsContainerRef}
+                className="flex-grow overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-[#2D2D2D]"
+              >
+                {logs.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-xs text-[#9CA3AF]/40 italic">
+                    No crawler logs yet.
+                  </div>
+                ) : (
+                  logs.map((log) => (
+                    <div key={log.id} className="flex items-start text-xs space-x-2 text-[#9CA3AF] py-1 border-b border-[#2D2D2D]/10 last:border-0">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#A78BFA] mt-1.5 flex-shrink-0"></span>
+                      <div className="flex-grow">
+                        <p className="text-[#F9FAFB] leading-relaxed">{log.message}</p>
+                      </div>
+                      <span className="text-[10px] text-[#9CA3AF]/50 font-mono flex-shrink-0">{log.timestamp}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={crawlStatus === 'crawling' || crawlStatus === 'indexing' || !urlInput.trim()}
-              className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 text-white text-xs font-semibold py-3 rounded-xl transition-all active:scale-[0.99] shadow-sm cursor-pointer"
-            >
-              {crawlStatus === 'crawling' ? 'Crawling Pages...' : crawlStatus === 'indexing' ? 'Saving to Database...' : 'Crawl & Index Website'}
-            </button>
-          </form>
-
-          {/* Status Indicator Screen */}
-          <div className="mt-4.5">
-            {crawlStatus === 'idle' && (
-              <div className="bg-slate-50 border border-slate-200/60 p-3.5 rounded-xl text-center">
-                <span className="text-[9px] text-slate-400 font-bold block mb-1 uppercase tracking-widest">Pipeline Status</span>
-                <p className="text-xs text-slate-500 leading-normal">Ready. Enter a website URL above to build your vector database.</p>
-              </div>
-            )}
-
-            {crawlStatus === 'crawling' && (
-              <div className="bg-blue-50/50 border border-blue-200/60 p-4 rounded-xl space-y-2 text-blue-700">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold">Crawling pages...</span>
-                </div>
-                <p className="text-[10px] text-blue-600/80 leading-relaxed">
-                  Executing BFS traversal. Scraping same-domain URLs with a rate limit of 500ms between requests. This may take up to 10 seconds.
-                </p>
-              </div>
-            )}
-
-            {crawlStatus === 'indexing' && (
-              <div className="bg-indigo-50/50 border border-indigo-200/60 p-4 rounded-xl space-y-2 text-indigo-700">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold">Indexing contents...</span>
-                </div>
-                <p className="text-[10px] text-indigo-600/80 leading-relaxed">
-                  Splitting text pages into chunks, generating vector embeddings via Gemini, and saving records to ChromaDB.
-                </p>
-              </div>
-            )}
-
-            {crawlStatus === 'ready' && (
-              <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl flex items-center justify-between shadow-sm">
-                <div>
-                  <span className="text-[9px] uppercase tracking-wider text-emerald-700 font-bold">Database Active</span>
-                  <h4 className="text-xs font-bold text-slate-800 truncate max-w-[200px] mt-0.5">{indexedUrl}</h4>
-                </div>
-                <span className="bg-emerald-100 text-emerald-800 font-mono text-[10px] px-2.5 py-0.5 rounded-full font-bold">
-                  {crawledPages.length} Pages
-                </span>
-              </div>
-            )}
-
-            {crawlStatus === 'error' && (
-              <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl space-y-1.5 text-rose-800 shadow-sm">
-                <div className="flex items-start space-x-2">
-                  <svg className="w-4.5 h-4.5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                  </svg>
-                  <div className="text-xs">
-                    <p className="font-bold uppercase tracking-wider text-[9px]">Execution Failed</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-rose-700/90">{errorMessage}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* List of crawled pages */}
-          {crawledPages.length > 0 && (
-            <div className="flex-grow flex flex-col mt-4 overflow-hidden">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Crawled Pages ({crawledPages.length})
-              </span>
-              
-              <div className="flex-grow overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-                {crawledPages.map((page, index) => {
-                  const isExpanded = !!expandedPages[page.url];
-                  return (
-                    <div key={index} className="bg-slate-50/50 rounded-xl border border-slate-200/40 overflow-hidden transition-all duration-200">
-                      {/* Accordion Trigger */}
-                      <button 
-                        onClick={() => togglePageExpand(page.url)}
-                        className="w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-100/50 transition-colors gap-3 cursor-pointer"
-                      >
-                        <div className="truncate flex-grow">
-                          <h5 className="text-[10px] font-bold text-slate-700 truncate">{page.title || 'Untitled Page'}</h5>
-                          <span className="text-[8px] font-mono text-slate-400 truncate block mt-0.5">{page.url}</span>
-                        </div>
-                        <svg className={`w-3.5 h-3.5 text-slate-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180 text-slate-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                      </button>
-
-                      {/* Accordion Content */}
-                      {isExpanded && (
-                        <div className="p-2.5 border-t border-slate-200/50 bg-white text-[9px] space-y-2.5">
-                          <div>
-                            <span className="text-[8px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Scraped Content</span>
-                            <div className="max-h-[80px] overflow-y-auto bg-slate-50 p-2 rounded border border-slate-200/60 text-slate-600 leading-relaxed font-sans whitespace-pre-line scrollbar-thin">
-                              {page.content ? page.content.substring(0, 500) + (page.content.length > 500 ? '...' : '') : 'No text content.'}
-                            </div>
+            {/* Collapsible Scraped Pages details */}
+            {crawledPages.length > 0 && (
+              <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl p-5 shadow-lg space-y-3">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Crawled Pages List</h3>
+                <div className="max-h-[220px] overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-[#2D2D2D]">
+                  {crawledPages.map((page, index) => {
+                    const isExpanded = !!expandedPages[page.url];
+                    return (
+                      <div key={index} className="bg-[#0F0F0F] rounded-lg border border-[#2D2D2D] overflow-hidden transition-all duration-200">
+                        <button 
+                          onClick={() => togglePageExpand(page.url)}
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 flex items-center justify-between hover:bg-[#1A1A1A] transition-colors gap-3 cursor-pointer"
+                        >
+                          <div className="truncate flex-grow">
+                            <h5 className="text-[11px] font-semibold text-[#F9FAFB] truncate">{page.title || 'Untitled Page'}</h5>
+                            <span className="text-[9px] font-mono text-[#9CA3AF]/60 truncate block mt-0.5">{page.url}</span>
                           </div>
-
-                          {page.links && page.links.length > 0 && (
+                          <svg className={`w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180 text-[#A78BFA]' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {isExpanded && (
+                          <div className="p-3 border-t border-[#2D2D2D] bg-[#1A1A1A]/50 text-[10px] space-y-3">
                             <div>
-                              <span className="text-[8px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Discovered Links ({page.links.length})</span>
-                              <div className="max-h-[60px] overflow-y-auto space-y-0.5 bg-slate-50 p-2 rounded border border-slate-200/60 scrollbar-thin">
-                                {page.links.map((link, lIdx) => (
-                                  <a key={lIdx} href={link} target="_blank" rel="noopener noreferrer" className="block text-[8px] text-blue-600 hover:underline truncate font-mono">
-                                    {link}
-                                  </a>
-                                ))}
+                              <span className="text-[9px] uppercase tracking-wider text-[#9CA3AF] font-bold block mb-1">Scraped Content</span>
+                              <div className="max-h-[90px] overflow-y-auto bg-[#0F0F0F] p-2.5 rounded border border-[#2D2D2D] text-[#9CA3AF] leading-relaxed whitespace-pre-line scrollbar-thin">
+                                {page.content ? page.content.substring(0, 400) + (page.content.length > 400 ? '...' : '') : 'No text content.'}
                               </div>
                             </div>
-                          )}
+                            {page.links && page.links.length > 0 && (
+                              <div>
+                                <span className="text-[9px] uppercase tracking-wider text-[#9CA3AF] font-bold block mb-1">Internal Links Discovered ({page.links.length})</span>
+                                <div className="max-h-[70px] overflow-y-auto space-y-1 bg-[#0F0F0F] p-2.5 rounded border border-[#2D2D2D] scrollbar-thin">
+                                  {page.links.map((link, lIdx) => (
+                                    <a key={lIdx} href={link} target="_blank" rel="noopener noreferrer" className="block text-[9px] text-[#A78BFA] hover:underline truncate font-mono">
+                                      {link}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Right Column (60%) - Chat Interface */}
+          <section className="lg:col-span-6 bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl flex flex-col overflow-hidden shadow-lg h-[calc(100vh-140px)] min-h-[600px] relative">
+            
+            {/* Chat Panel Header */}
+            <div className="px-5 py-4.5 border-b border-[#2D2D2D] bg-[#1A1A1A] flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#7C3AED] shadow-sm animate-pulse"></span>
+                <h3 className="text-xs font-bold text-[#F9FAFB] uppercase tracking-wider">AI Conversational Assistant</h3>
+              </div>
+              {indexedUrl && (
+                <span className="text-xs text-[#9CA3AF] font-medium truncate max-w-[240px]">
+                  Context: <span className="text-[#A78BFA] font-mono font-semibold">{new URL(indexedUrl).hostname}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Chat Messages scroll area */}
+            <div className="flex-grow overflow-y-auto p-5 space-y-6 bg-[#111111]/30 scrollbar-thin scrollbar-thumb-[#2D2D2D]">
+              {messages.map((msg) => {
+                const isBot = msg.sender === 'bot';
+                return (
+                  <div key={msg.id} className={`flex ${isBot ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`w-full max-w-[85%] rounded-xl px-4 py-3.5 transition-all ${
+                      isBot 
+                        ? 'bg-[#1A1A1A] border border-[#2D2D2D] text-[#F9FAFB] rounded-tl-none shadow-md' 
+                        : 'bg-[#7C3AED] text-white rounded-tr-none shadow-md ml-auto max-w-[75%]'
+                    }`}>
+                      
+                      {/* Render Text Content */}
+                      <div className="text-sm leading-relaxed font-normal">
+                        {renderMessageText(msg.text)}
+                      </div>
+
+                      {/* Sources Display (Bot answers only) */}
+                      {isBot && msg.sources && msg.sources.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-[#2D2D2D]">
+                          <span className="text-[10px] uppercase tracking-wider text-[#9CA3AF] font-bold block mb-2">Sources:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {msg.sources.map((src, sIdx) => (
+                              <a 
+                                key={sIdx} 
+                                href={src.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="bg-[#7C3AED]/10 border border-[#7C3AED]/20 px-3 py-1.5 rounded-full text-xs text-[#A78BFA] hover:bg-[#7C3AED]/25 transition-all duration-200 flex items-center space-x-1.5 truncate max-w-[220px]"
+                                title={src.title || src.url}
+                              >
+                                <svg className="w-3.5 h-3.5 flex-shrink-0 text-[#A78BFA]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                                <span className="truncate">{src.title || 'Source'}</span>
+                              </a>
+                            ))}
+                          </div>
                         </div>
                       )}
+
+                      <span className={`text-[9px] mt-2 block text-right opacity-40 ${isBot ? 'text-[#9CA3AF]' : 'text-white/70'}`}>
+                        {msg.timestamp}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
+                  </div>
+                );
+              })}
 
-        {/* Right Column: Chat Interface */}
-        <section className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl flex flex-col overflow-hidden shadow-sm h-full relative">
-          
-          {/* Chat Panel Header */}
-          <div className="px-5 py-4 border-b border-slate-200/80 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <span className="h-2 w-2 rounded-full bg-slate-900 shadow-sm"></span>
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Conversational Assistant</h3>
-            </div>
-            {indexedUrl && (
-              <span className="text-[10px] text-slate-500 font-medium">
-                Connected to: <span className="text-slate-800 font-mono">{new URL(indexedUrl).hostname}</span>
-              </span>
-            )}
-          </div>
+              {/* Chat empty state with Suggested questions */}
+              {messages.length === 1 && !isThinking && (
+                <div className="flex-grow flex flex-col items-center justify-center p-6 text-center space-y-6 my-8">
+                  <div className="h-16 w-16 rounded-2xl bg-[#7C3AED]/10 border border-[#7C3AED]/20 flex items-center justify-center text-[#A78BFA] shadow-lg shadow-[#7C3AED]/5 animate-pulse">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-base font-bold text-white uppercase tracking-wider">Conversational RAG Chat</h3>
+                    <p className="text-xs text-[#9CA3AF] max-w-[340px] leading-relaxed">
+                      Select one of the suggested prompts below to immediately retrieve context and generate a response:
+                    </p>
+                  </div>
 
-          {/* Chat Messages scroll window */}
-          <div className="flex-grow overflow-y-auto p-5 space-y-4.5 bg-slate-50/10 scrollbar-thin">
-            {messages.map((msg) => {
-              const isBot = msg.sender === 'bot';
-              return (
-                <div key={msg.id} className={`flex ${isBot ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`w-full max-w-[85%] rounded-2xl px-4 py-3.5 ${
-                    isBot 
-                      ? 'bg-white border border-slate-200/80 text-slate-700 rounded-tl-none shadow-sm' 
-                      : 'bg-slate-800 text-white rounded-tr-none shadow-sm ml-auto max-w-[70%]'
-                  }`}>
-                    
-                    {/* Render Text Content */}
-                    <div className="text-xs leading-relaxed font-medium">
-                      {renderMessageText(msg.text)}
-                    </div>
+                  <div className="w-full max-w-[480px] grid grid-cols-1 gap-3 pt-3">
+                    {[
+                      "What does this website do?",
+                      "What products do they offer?",
+                      "How can I contact them?"
+                    ].map((q, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSendSuggested(q)}
+                        disabled={crawlStatus !== 'ready' || isThinking}
+                        type="button"
+                        className="w-full text-left bg-[#0F0F0F] border border-[#2D2D2D] hover:border-[#7C3AED] hover:bg-[#7C3AED]/5 text-xs text-white px-4 py-3.5 rounded-lg transition-all duration-200 shadow-md font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                    {/* Sources Display (Bot answers only) */}
-                    {isBot && msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3.5 pt-2.5 border-t border-slate-100">
-                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block mb-1.5">References & Sources</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {msg.sources.map((src, sIdx) => (
-                            <a 
-                              key={sIdx} 
-                              href={src.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="bg-white border border-slate-200 px-2.5 py-1 rounded-md text-[9px] text-blue-600 hover:text-blue-500 hover:border-slate-300 transition-all flex items-center space-x-1.5 truncate max-w-[200px]"
-                              title={src.title || src.url}
-                            >
-                              <svg className="w-3 h-3 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
-                              </svg>
-                              <span className="truncate">{src.title || 'Source Link'}</span>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <span className={`text-[8px] mt-1.5 block text-right opacity-50 ${isBot ? 'text-slate-400' : 'text-slate-300'}`}>
-                      {msg.timestamp}
+              {/* Typing loader dots */}
+              {isThinking && (
+                <div className="flex justify-start">
+                  <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl rounded-tl-none px-5 py-4 w-auto flex items-center shadow-lg">
+                    <span className="flex space-x-1.5 items-center h-2">
+                      <span className="h-2 w-2 bg-[#A78BFA] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="h-2 w-2 bg-[#A78BFA] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="h-2 w-2 bg-[#A78BFA] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                     </span>
                   </div>
                 </div>
-              );
-            })}
+              )}
+              <div ref={chatEndRef} />
+            </div>
 
-            {/* Thinking / Typings bubble loader */}
-            {isThinking && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-none px-4 py-3.5 w-full max-w-[80%] space-y-2 shadow-sm">
-                  <div className="flex items-center space-x-2">
-                    <span className="flex space-x-1">
-                      <span className="h-1.5 w-1.5 bg-slate-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                      <span className="h-1.5 w-1.5 bg-slate-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                      <span className="h-1.5 w-1.5 bg-slate-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Thinking...</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 leading-normal">
-                    Gemini is retrieving vector contexts from ChromaDB and generating your grounded answer.
-                  </p>
+            {/* Chat locked overlay */}
+            {crawlStatus !== 'ready' && (
+              <div className="absolute inset-0 bg-[#0F0F0F]/80 backdrop-blur-md z-20 flex flex-col items-center justify-center p-6 text-center select-none">
+                <div className="h-16 w-16 rounded-2xl bg-[#1A1A1A] border border-[#2D2D2D] flex items-center justify-center mb-4 text-[#9CA3AF] shadow-lg shadow-[#7C3AED]/5">
+                  <svg className="w-8 h-8 animate-pulse text-[#7C3AED]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
                 </div>
+                <h3 className="text-white font-bold text-sm uppercase tracking-wider">Chat Locked</h3>
+                <p className="text-xs text-[#9CA3AF] mt-2 max-w-[320px] leading-relaxed">
+                  Provide a website URL and click **Start Crawling** on the left panel to unlock the AI conversation.
+                </p>
               </div>
             )}
-            <div ref={chatEndRef} />
-          </div>
 
-          {/* RAG Not Ready Overlay */}
-          {crawlStatus !== 'ready' && (
-            <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6 text-center select-none">
-              <div className="h-16 w-16 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mb-4 text-slate-600 shadow-sm">
-                <svg className="w-8 h-8 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+            {/* Input Form area */}
+            <form onSubmit={handleSendChat} className="p-4 border-t border-[#2D2D2D] bg-[#1A1A1A] flex items-center space-x-3">
+              <div className="flex-grow flex items-center bg-[#0F0F0F] border border-[#2D2D2D] rounded-lg px-4 py-3 focus-within:border-[#7C3AED] focus-within:ring-1 focus-within:ring-[#7C3AED] transition-all">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={crawlStatus === 'ready' ? `Ask a question about ${new URL(indexedUrl).hostname}...` : "Please index a website first..."}
+                  className="bg-transparent text-sm w-full text-white outline-none placeholder-[#9CA3AF]/30 font-medium disabled:opacity-50"
+                  disabled={crawlStatus !== 'ready' || isThinking}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={crawlStatus !== 'ready' || isThinking || !chatInput.trim()}
+                className="bg-[#7C3AED] hover:bg-[#7C3AED]/90 disabled:opacity-40 disabled:hover:bg-[#7C3AED] text-white text-sm font-bold px-6 py-3.5 rounded-lg transition-all duration-200 active:scale-[0.97] flex-shrink-0 flex items-center space-x-2 cursor-pointer shadow-lg shadow-[#7C3AED]/20 disabled:shadow-none"
+              >
+                <span>Send</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
-              </div>
-              <h3 className="text-slate-800 font-bold text-sm uppercase tracking-wider">Chat Locked</h3>
-              <p className="text-xs text-slate-500 mt-2 max-w-[320px] leading-relaxed">
-                Provide a website link and click **Crawl & Index Website** on the left to start your chatbot conversation.
-              </p>
-            </div>
-          )}
+              </button>
+            </form>
 
-          {/* Chat message input form */}
-          <form onSubmit={handleSendChat} className="p-3 border-t border-slate-200 bg-slate-50/50 flex items-center space-x-2">
-            <div className="flex-grow flex items-center bg-white border border-slate-250 rounded-xl px-3 py-2.5 focus-within:border-blue-500/85 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-150">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder={crawlStatus === 'ready' ? `Ask a question about ${new URL(indexedUrl).hostname}...` : "Please index a website first..."}
-                className="bg-transparent text-xs w-full text-slate-800 outline-none placeholder-slate-400 font-medium disabled:opacity-50"
-                disabled={crawlStatus !== 'ready' || isThinking}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={crawlStatus !== 'ready' || isThinking || !chatInput.trim()}
-              className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 text-white text-xs font-semibold px-4.5 py-3 rounded-xl transition-all active:scale-[0.97] flex-shrink-0 flex items-center space-x-1 cursor-pointer"
-            >
-              <span>Send</span>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
-              </svg>
-            </button>
-          </form>
+          </section>
 
-        </section>
-
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

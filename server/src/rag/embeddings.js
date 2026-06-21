@@ -9,9 +9,9 @@ if (!apiKey) {
   throw new Error("Missing GOOGLE_API_KEY environment variable.");
 }
 
-// Initialize the Google Generative AI Embeddings model 'embedding-001' (768 dimensions)
+// Initialize the Google Generative AI Embeddings model 'gemini-embedding-2'
 const baseEmbeddings = new GoogleGenerativeAIEmbeddings({
-  model: "gemini-embedding-001",
+  model: "gemini-embedding-2",
   apiKey: apiKey,
 });
 
