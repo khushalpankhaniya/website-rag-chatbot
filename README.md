@@ -5,7 +5,7 @@ An intelligent Retrieval-Augmented Generation (RAG) chatbot that allows users to
 ---
 
 ## Tech Stack
-* **Frontend:** React, Vite, Tailwind CSS (Custom Dark Theme)
+* **Frontend:** React, Vite, Tailwind CSS
 * **Backend:** Node.js, Express, Axios, Cheerio, robots-parser
 * **Vector Store:** Chroma DB
 * **LLM & Embeddings:** Google Gemini (`gemini-flash-latest` and `gemini-embedding-2`) via `@langchain/google-genai` and `@langchain/community`

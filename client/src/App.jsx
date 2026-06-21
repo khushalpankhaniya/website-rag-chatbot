@@ -17,7 +17,7 @@ function App() {
     {
       id: 'welcome',
       sender: 'bot',
-      text: "Hello! I am your **WebChat AI Assistant** 🤖.\n\nEnter a website URL in the control panel on the left to crawl and index it into **ChromaDB**. Once indexing completes, you can chat with me about the website's content, services, values, or any other details!",
+      text: "Hello! I am your **WebChat AI Assistant** 🤖.",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       sources: []
     }
@@ -136,13 +136,19 @@ function App() {
       setCrawlStatus('ready');
       setIndexedUrl(targetUrl);
       
-      // Add confirmation message to chat
-      setMessages((prev) => [
-        ...prev,
+      // Reset chat messages to welcome message + success confirmation
+      setMessages([
+        {
+          id: 'welcome',
+          sender: 'bot',
+          text: "Hello! I am your **WebChat AI Assistant** 🤖.",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          sources: []
+        },
         {
           id: `system-${Date.now()}`,
           sender: 'bot',
-          text: `🎉 Successfully crawled and indexed **${pages.length}** pages from **${targetUrl}**!\n\nI have generated vector embeddings and stored them in ChromaDB. Ask me anything about this website!`,
+          text: `Successfully crawled and indexed **${pages.length}** pages from **${targetUrl}**!\n\nI have generated vector embeddings and stored them in ChromaDB. Ask me anything about this website!`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           sources: []
         }
@@ -465,11 +471,30 @@ function App() {
                 <span className="h-2.5 w-2.5 rounded-full bg-[#7C3AED] shadow-sm animate-pulse"></span>
                 <h3 className="text-xs font-bold text-[#F9FAFB] uppercase tracking-wider">AI Conversational Assistant</h3>
               </div>
-              {indexedUrl && (
-                <span className="text-xs text-[#9CA3AF] font-medium truncate max-w-[240px]">
-                  Context: <span className="text-[#A78BFA] font-mono font-semibold">{new URL(indexedUrl).hostname}</span>
-                </span>
-              )}
+              <div className="flex items-center space-x-3">
+                {indexedUrl && (
+                  <span className="text-xs text-[#9CA3AF] font-medium truncate max-w-[180px]">
+                    Context: <span className="text-[#A78BFA] font-mono font-semibold">{new URL(indexedUrl).hostname}</span>
+                  </span>
+                )}
+                {messages.length > 1 && (
+                  <button
+                    onClick={() => setMessages([
+                      {
+                        id: 'welcome',
+                        sender: 'bot',
+                        text: "Hello! I am your **WebChat AI Assistant** 🤖.",
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        sources: []
+                      }
+                    ])}
+                    type="button"
+                    className="text-[10px] bg-[#2D2D2D] hover:bg-[#EF4444]/15 hover:text-[#EF4444] border border-[#3D3D3D] text-[#9CA3AF] px-2.5 py-1 rounded transition-all duration-200 cursor-pointer font-bold uppercase tracking-wider"
+                  >
+                    Clear Chat
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Chat Messages scroll area */}
