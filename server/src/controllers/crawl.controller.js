@@ -76,26 +76,22 @@ export async function indexContent(req, res) {
       });
     }
 
-    console.log(`Indexing ${allDocuments.length} document chunks into ChromaDB...`);
+    console.log(`Indexing ${allDocuments.length} document chunks into MemoryVectorStore...`);
 
-    // Fetch Chroma vector store
+    // Fetch vector store
     const vectorStore = await getVectorStore();
 
-    // Clear old documents in the collection first to prevent mixing websites
+    // Clear old documents in the memory vector store first to prevent mixing websites
     try {
-      const collection = await vectorStore.ensureCollection();
-      const existingDocs = await collection.get();
-      if (existingDocs && existingDocs.ids && existingDocs.ids.length > 0) {
-        console.log(`Clearing ${existingDocs.ids.length} existing documents from ChromaDB...`);
-        await collection.delete({ ids: existingDocs.ids });
-      }
+      console.log(`Clearing existing documents from MemoryVectorStore...`);
+      vectorStore.memoryVectors = [];
     } catch (clearErr) {
-      console.warn("Could not clear existing collection data:", clearErr.message);
+      console.warn("Could not clear existing memory vector store data:", clearErr.message);
     }
 
     await vectorStore.addDocuments(allDocuments);
 
-    console.log(`Successfully stored ${allDocuments.length} chunks inside Chroma.`);
+    console.log(`Successfully stored ${allDocuments.length} chunks inside memory.`);
 
     res.json({
       success: true,
