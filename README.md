@@ -7,8 +7,8 @@ An intelligent Retrieval-Augmented Generation (RAG) chatbot that allows users to
 ## Tech Stack
 * **Frontend:** React, Vite, Tailwind CSS
 * **Backend:** Node.js, Express, Axios, Cheerio, robots-parser
-* **Vector Store:** Chroma DB
-* **LLM & Embeddings:** Google Gemini (`gemini-flash-latest` and `gemini-embedding-2`) via `@langchain/google-genai` and `@langchain/community`
+* **Vector Store:** In-memory Vector Store (`MemoryVectorStore`) via `@langchain/classic`
+* **LLM & Embeddings:** Google Gemini (`gemini-flash-latest` and `gemini-embedding-2`) via `@langchain/google-genai`
 
 ---
 
@@ -19,23 +19,12 @@ Create a `.env` file inside the `/server` directory and define the following var
 ```env
 PORT=5000
 GOOGLE_API_KEY=YOUR_GEMINI_API_KEY
-CHROMA_URL=http://localhost:8000
 ```
 *(Get your API key from [Google AI Studio](https://aistudio.google.com/))*
 
 ### Step-by-Step Setup
 
-#### Step 1: Start Chroma DB
-Chroma must be installed and run locally. (Requires Python).
-```bash
-# Install Chroma
-pip install chromadb
-
-# Start Chroma DB local server
-chroma run --path ./chroma --port 8000
-```
-
-#### Step 2: Start the Backend Server
+#### Step 1: Start the Backend Server
 ```bash
 cd server
 npm install
@@ -43,7 +32,7 @@ npm run dev
 ```
 *Backend runs on: [http://localhost:5000](http://localhost:5000)*
 
-#### Step 3: Start the Frontend Client
+#### Step 2: Start the Frontend Client
 ```bash
 cd client
 npm install
@@ -73,7 +62,7 @@ To keep indexed chunks clean and highly relevant:
 * **Limiter:** Includes a robust rate-limiter wrapper with exponential backoff to handle free-tier API quotas.
 
 ### 4. Grounding and Anti-Hallucination
-* **Similarity Retrieval:** Queries the Chroma DB collection to fetch the top `15` most relevant page context chunks matching the user's question.
+* **Similarity Retrieval:** Queries the in-memory vector store (`MemoryVectorStore`) to fetch the top `15` most relevant page context chunks matching the user's question.
 * **Prompt Hardening:** Passes the retrieved contexts and chat history to Gemini (`gemini-flash-latest`). The system prompt template enforces that the model answer **only** based on the provided context. If the answer is not present in the context, it must respond exactly: `"I couldn't find that information on the crawled website."` to prevent hallucination.
 * **Sources Citations:** Collects metadata (titles and source URLs) from the retrieved vector document chunks and presents them as clickable source badges in the UI beneath the chatbot answer.
 
@@ -90,7 +79,7 @@ To keep indexed chunks clean and highly relevant:
 * **Scraper Blocking (Anti-Bot WAFs):** Raw Axios HTTP clients cannot bypass websites protected by Cloudflare or Akamai (e.g., Flipkart). It will return a `403 Forbidden` since it lacks TLS fingerprinting and JS execution.
 * **Context Fragmentation:** Standard character-based chunking can break important tables or split nested context sentences across boundaries, weakening retrieval accuracy on long, complex documents.
 * **Single Collection Limit:** The system currently wipes the vector store database collection on every new crawl, supporting only one crawled site at a time.
-* **Local Database Dependency:** Requires the user to have Python and a local Chroma service running, adding Friction to the onboarding developer experience.
+* **Volatility (In-Memory Storage):** Because vectors are stored in the server's memory (RAM), restarting the Node.js backend server will wipe the indexed vectors. The user will need to re-crawl and index the website.
 
 ### Proposed Future Improvements
 1. **Stealth Headless Scraping:** Replace Axios/Cheerio with a headless browser automation library like **Playwright** or **Puppeteer** (augmented with `puppeteer-extra-plugin-stealth`) to bypass advanced anti-bot challenges.
