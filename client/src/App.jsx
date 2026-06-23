@@ -3,6 +3,29 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin);
 
+const formatApiError = (err) => {
+  const errMsg = err.response?.data?.details || 
+    err.response?.data?.error || 
+    err.message || 
+    '';
+
+  const errMsgStr = String(errMsg).toLowerCase();
+
+  if (errMsgStr.includes('api key not valid') || errMsgStr.includes('key_invalid') || errMsgStr.includes('unauthorized') || errMsgStr.includes('api_key_invalid') || errMsgStr.includes('invalid_key')) {
+    return 'Invalid Gemini API Key. Please verify the GOOGLE_API_KEY value in your server\'s .env file and ensure it is correct.';
+  }
+
+  if (errMsgStr.includes('quota') || errMsgStr.includes('rate limit') || errMsgStr.includes('resource_exhausted') || errMsgStr.includes('limit exceeded') || err.response?.status === 429) {
+    return 'Gemini API Rate Limit Exceeded. The free tier allows up to 15 requests per minute. Please wait 60 seconds for the limit to reset, then try crawling again.';
+  }
+
+  if (errMsgStr.includes('network') || errMsgStr.includes('conn') || errMsgStr.includes('econnrefused')) {
+    return 'Connection Refused. Ensure that the Node.js backend server is running on port 5000 and that you have an active internet connection.';
+  }
+
+  return errMsg || 'An unexpected error occurred. Please verify your connection and try again.';
+};
+
 function App() {
   const [urlInput, setUrlInput] = useState('');
   const [crawlStatus, setCrawlStatus] = useState('idle'); // 'idle' | 'crawling' | 'indexing' | 'ready' | 'error'
@@ -157,10 +180,7 @@ function App() {
     } catch (err) {
       console.error(err);
       setCrawlStatus('error');
-      const errText = err.response?.data?.details || 
-        err.response?.data?.error || 
-        err.message || 
-        'An error occurred. Check if the server is running on port 5000 and target site is reachable.';
+      const errText = formatApiError(err);
       setErrorMessage(errText);
       addLog(`❌ Error during execution: ${errText}`);
     }
@@ -211,12 +231,13 @@ function App() {
       ]);
     } catch (err) {
       console.error(err);
+      const friendlyErr = formatApiError(err);
       setMessages((prev) => [
         ...prev,
         {
           id: `bot-err-${Date.now()}`,
           sender: 'bot',
-          text: "Something went wrong. Please try again.",
+          text: `❌ **Error:** ${friendlyErr}`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           sources: []
         }
@@ -313,6 +334,27 @@ function App() {
           {/* Left Column (40%) - Control Panel */}
           <section className="lg:col-span-4 flex flex-col space-y-6 overflow-y-auto pr-1">
             
+            {/* API Guidelines & Tips */}
+            <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl p-5 shadow-lg space-y-3 text-xs">
+              <h3 className="font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-[#A78BFA]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                API Usage Guidelines & Troubleshooting
+              </h3>
+              <ul className="space-y-2 text-[#9CA3AF] list-disc list-inside leading-relaxed font-medium">
+                <li>
+                  <strong className="text-[#F9FAFB]">Free Tier Limits:</strong> The free Gemini API has a limit of <span className="text-[#A78BFA] font-semibold">15 Requests Per Minute (RPM)</span> and <span className="text-[#A78BFA] font-semibold">1,500 Tokens Per Minute (TPM)</span> for embeddings.
+                </li>
+                <li>
+                  <strong className="text-[#F9FAFB]">Adaptive Limiter:</strong> If you crawl larger sites (producing many chunks), our backend will automatically throttle request batching to stay under the 1,500 TPM limit.
+                </li>
+                <li>
+                  <strong className="text-[#F9FAFB]">Troubleshooting:</strong> If you run into a rate limit or a connection failure, simply wait **60 seconds** for the quota to reset, refresh the page, and try again.
+                </li>
+              </ul>
+            </div>
+
             {/* Crawl Form */}
             <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl p-5 shadow-lg space-y-4">
               <h2 className="text-sm font-bold text-white uppercase tracking-wider">Crawl Configuration</h2>
@@ -460,6 +502,8 @@ function App() {
                 </div>
               </div>
             )}
+
+
           </section>
 
           {/* Right Column (60%) - Chat Interface */}

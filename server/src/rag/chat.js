@@ -64,8 +64,8 @@ export async function queryRAG(question, history = []) {
   // 1. Condense follow-up question if history exists
   const searchQuery = await condenseQuestion(question, history);
 
-  // 2. Retrieve the top 15 relevant documents from Chroma
-  const retrievedDocs = await vectorStore.similaritySearch(searchQuery, 15);
+  // 2. Retrieve the top 6 relevant documents from Chroma
+  const retrievedDocs = await vectorStore.similaritySearch(searchQuery, 6);
 
   // 3. Format context for prompt template (Title, URL, and Content)
   const contextText = retrievedDocs
